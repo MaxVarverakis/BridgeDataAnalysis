@@ -10,7 +10,9 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn import linear_model
 import os
 from scipy.spatial import ConvexHull, Delaunay
-from scipy.optimize import minimize
+import warnings
+
+warnings.simplefilter('ignore', np.RankWarning)
 
 # 16
 
@@ -270,7 +272,7 @@ def selectK(X, kmax = 5, threshold = .8):
     else:
         return 1
 
-def separate(X: np.ndarray, labels: np.ndarray, plot = False, threshold = 5e2):
+def separate(X: np.ndarray, labels: np.ndarray, plot = False, threshold = 2e2):
     k = len(np.unique(labels[labels != -1]))
     Xsep = [X[labels == i] for i in range(k) if len(np.unique(X[labels == i])) > threshold]
     # print([len(np.unique(d)) for d in Xsep])
@@ -405,22 +407,26 @@ def containment(bridge: np.ndarray, corners: np.ndarray, plot = True):
     
     right, bottom, left, top = np.polyval(line(bridge[ymax], bridge[xmax]), bridge[:, 0]), np.polyval(line(bridge[xmax], bridge[ymin]), bridge[:, 0]), np.polyval(line(bridge[ymin], bridge[xmin]), bridge[:, 0]), np.polyval(line(bridge[xmin], bridge[ymax]), bridge[:, 0])
 
-    y = bridge[:, 1]
+    x, y, _ = xyz(bridge)
 
     mask = np.logical_and(
-        np.logical_and(right > y, 
-                       bottom < y), 
-        np.logical_and(left < y, 
-                       top > y))
+        np.logical_and(y < right, 
+                       y > bottom), 
+        np.logical_and(y > left, 
+                       y < top))
     
     if plot:
+        s = .01
         m = '.'
+        color = 'k'
         plt.scatter(bridge[:, 0], bridge[:, 1], c = bridge[:, 2], marker = m)
         plt.scatter(bridge[mask, 0], bridge[mask, 1], c = 'r', marker = m)
-        plt.plot(bridge[:, 0], right, c = 'b')
-        plt.plot(bridge[:, 0], bottom, c = 'b')
-        plt.plot(bridge[:, 0], left, c = 'b')
-        plt.plot(bridge[:, 0], top, c = 'b')
+        plt.plot(bridge[:, 0], right, c = color)
+        plt.plot(bridge[:, 0], bottom, c = color)
+        plt.plot(bridge[:, 0], left, c = color)
+        plt.plot(bridge[:, 0], top, c = color)
+        plt.xlim(bridge[xmin, 0] - s, bridge[xmax, 0] + s)
+        plt.ylim(bridge[ymin, 1] - s, bridge[ymax, 1] + s)
         plt.show()
 
     contained = bridge[mask]
@@ -445,23 +451,30 @@ def rotate(bridge: np.ndarray, angle: float, plot = False):
 
     return bridgeRot
 
-def findEdges(bridge: np.ndarray, threshold = 1., iterations = 10, plot = True):
-    corners = extremes(bridge, plot = False)
-    _, area = containment(bridge, corners, plot = False)
+def findEdges(bridge: np.ndarray, threshold = .7, angle = 90, iterations = 10, plot = True):
+    vertices = extremes(bridge, plot = False)
+    _, area = containment(bridge, vertices, plot = False)
     
-    if area < threshold:    
-        angle = np.random.uniform(0, 45, size = iterations)
+    if area < threshold:
+        angle = np.random.uniform(0, angle, size = iterations)
         areas = np.zeros(iterations)
-        corners = np.zeros((iterations, 4))
-
+        corners = np.zeros((iterations, 4), dtype = int)
         for i in range(iterations):
             bridgeRot = rotate(bridge, angle[i], plot = False)
             corners[i] = extremes(bridgeRot, plot = False)
-            _, areas[i] = containment(bridgeRot, corners, plot = False)
+            # print(corners[i])
+            _, areas[i] = containment(bridgeRot, corners[i], plot = False)
 
-    best = np.argmax(areas)
+        best = np.argmax(areas)
 
-    vertices = corners[best]
+        vertices = corners[best]
+        bridge = rotate(bridge, angle[best], plot = False)
+        # print(area, areas)
+        area = max(areas[best], area)
+    
+    if area < threshold:
+        print('ERROR: area is still less than threshold!')
+    # print(area)
 
     if plot:
         containment(bridge, vertices, plot = True)
@@ -479,7 +492,7 @@ def findEdges(bridge: np.ndarray, threshold = 1., iterations = 10, plot = True):
 
 if __name__ == '__main__':
     
-    idx = 1
+    # idx = 15
     # problematic 15
 
     # for idx in range(19):
@@ -487,17 +500,17 @@ if __name__ == '__main__':
     #     DB(X, .5)
     #     Optcs(X, .5)
     
-    # for idx in range(19):
-    X = scale(loadData(idx))
-    labels = DB(X, .5, plot = True)
-    bridges = separate(X, labels)
-    # print(bridges)
-    # print(bridges)
-    for bridge in bridges:
+    for idx in range(19):
+        X = scale(loadData(idx))
+        labels = DB(X, .5, plot = True)
+        bridges = separate(X, labels)
+        
+        for bridge in bridges:
+            findEdges(bridge)
+        
         # pass
-        corners = extremes(bridge)
+        # corners = extremes(bridge)
         # containment(bridge, corners)
-        findEdges(bridge)
         # rotate(bridge, 45., True)
         # _, score = regression(bridge)
         # edge(bridge)
