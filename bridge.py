@@ -14,23 +14,6 @@ import warnings
 
 warnings.simplefilter('ignore', np.RankWarning)
 
-# 16
-
-# problematic 10, 14
-# solved 0
-# X = []
-
-# for file in os.listdir('Bridge/bridge_lidar-points'):
-    # X.append(pd.read_csv('Bridge/bridge_lidar-points/' + file).to_numpy()[:, :3])
-
-# One bridge: 2, 6, 15
-# oneB = [2, 6, 15]
-# print file names with one bridge
-# print([os.listdir('Bridge/bridge_lidar-points')[idx] for idx in oneB])
-
-# def deriv(x, y):
-#     return np.diff(y) / np.diff(x)
-
 def loadData(idx: int):
     return [pd.read_csv('Bridge/bridge_lidar-points/' + file).to_numpy()[:, :3] for file in os.listdir('Bridge/bridge_lidar-points')][idx]
 
@@ -49,6 +32,14 @@ def scale(X: np.ndarray, plot = False):
         show(scaled)
     
     return scaled
+
+def iscale(X: np.ndarray, plot = False):
+    inverse = RobustScaler().fit(X).inverse_transform(X)
+
+    if plot:
+        show(inverse)
+
+    return inverse
 
 def cluster(X, k = 3, plot = True):
 
@@ -383,14 +374,15 @@ def alpha_shape(points, alpha = 0.1, plot = True):
         plt.show()
     return hull
 
-def extremes(bridge: np.ndarray, plot = True):
+def extremes(bridge: np.ndarray, plot = False):
+    '''
+    Returns : indices of corners of bridge
+    '''
     x, y, z = xyz(bridge)
-    # x_min, x_max = np.min(x), np.max(x)
+
     xmin, xmax, ymin, ymax = np.argmin(x), np.argmax(x), np.argmin(y), np.argmax(y)
-    # y_min, y_max = np.min(y), np.max(y)
     
     indices = np.array([xmin, xmax, ymin, ymax])
-    # print(type(indices))
 
     if plot:
         plt.scatter(x, y, c = z, marker = '.')
@@ -399,46 +391,72 @@ def extremes(bridge: np.ndarray, plot = True):
 
     return xmin, xmax, ymin, ymax
 
-def line(p1, p2):
-    return np.polyfit([p1[0], p2[0]], [p1[1], p2[1]], deg = 1)
+def line(p1, p2, d = 1):
+    return np.polyfit([p1[0], p2[0]], [p1[1], p2[1]], deg = d)
 
-def containment(bridge: np.ndarray, corners: np.ndarray, plot = True):
+def dist(p1, p2):
+    return abs(np.linalg.norm(p1[:2] - p2[:2]))
+
+def containment(bridge: np.ndarray, corners: np.ndarray, d = 1, plot = True, idx = None, bNum = None, total = None):
     xmin, xmax, ymin, ymax = corners
     
-    right, bottom, left, top = np.polyval(line(bridge[ymax], bridge[xmax]), bridge[:, 0]), np.polyval(line(bridge[xmax], bridge[ymin]), bridge[:, 0]), np.polyval(line(bridge[ymin], bridge[xmin]), bridge[:, 0]), np.polyval(line(bridge[xmin], bridge[ymax]), bridge[:, 0])
+    x, y, z = xyz(bridge)
+    
+    r, b, l, t = (bridge[ymax], bridge[xmax]), (bridge[xmax], bridge[ymin]), (bridge[ymin], bridge[xmin]), (bridge[xmin], bridge[ymax])
+    
+    id1 = np.argmin([dist(*r), dist(*b), dist(*l), dist(*t)])
+    id2 = (id1 + 2) % 4
+    
+    # picks the shortest side and the oppisite side as the entrance and exit for the bridge (MIGHT NOT BE VALID FOR SOME BRIDGES)
+    entrance = np.array([r, b, l, t])[[id1, id2]] # shape (2, 2, 3)
 
-    x, y, _ = xyz(bridge)
+    right   = np.polyval(line(*r, d), x)
+    bottom  = np.polyval(line(*b, d), x)
+    left    = np.polyval(line(*l, d), x)
+    top     = np.polyval(line(*t, d), x)
 
     mask = np.logical_and(
         np.logical_and(y < right, 
                        y > bottom), 
         np.logical_and(y > left, 
                        y < top))
-    
+
     if plot:
         s = .01
         m = '.'
         color = 'k'
-        plt.scatter(bridge[:, 0], bridge[:, 1], c = bridge[:, 2], marker = m)
-        plt.scatter(bridge[mask, 0], bridge[mask, 1], c = 'r', marker = m)
-        plt.plot(bridge[:, 0], right, c = color)
-        plt.plot(bridge[:, 0], bottom, c = color)
-        plt.plot(bridge[:, 0], left, c = color)
-        plt.plot(bridge[:, 0], top, c = color)
-        plt.xlim(bridge[xmin, 0] - s, bridge[xmax, 0] + s)
-        plt.ylim(bridge[ymin, 1] - s, bridge[ymax, 1] + s)
+        
+        rMask = (x >= r[0][0]) & (x <= r[1][0])
+        bMask = (x <= b[0][0]) & (x >= b[1][0])
+        lMask = (x <= l[0][0]) & (x >= l[1][0])
+        tMask = (x >= t[0][0]) & (x <= t[1][0])
+
+        plt.scatter(x, y, c = z, marker = m)
+        # plt.scatter([r[0][0], b[0][0], l[0][0], t[0][0]], [r[0][1], b[0][1], l[0][1], t[0][1]], c = 'r', marker = m)
+        plt.scatter(x[mask], y[mask], c = 'r', marker = m)
+        plt.plot(x[rMask], right[rMask], c = color)
+        plt.plot(x[bMask], bottom[bMask], c = color)
+        plt.plot(x[lMask], left[lMask], c = color)
+        plt.plot(x[tMask], top[tMask], c = color)
+        plt.xlim(x[xmin] - s, x[xmax] + s)
+        plt.ylim(y[ymin] - s, y[ymax] + s)
+        plt.axis('off')
+        plt.title(f'Dataset {idx + 1} \n Bridge {bNum + 1}/{total}')
         plt.show()
 
     contained = bridge[mask]
-    area = len(contained) / len(bridge)
+    area = len(contained) / len(bridge) # proportion of points contained in hull
 
-    return contained, area
+    return contained, area, entrance
 
-def rotate(bridge: np.ndarray, angle: float, plot = False):
+def rotate(bridge: np.ndarray, angle: float, center = None, plot = False):
     rad = np.radians(angle)
     x, y, z = xyz(bridge)
     
-    X, Y, _ = np.mean(bridge, axis = 0)
+    if center:
+        X, Y = center
+    else:
+        X, Y, _ = np.mean(bridge, axis = 0)
     xSub, ySub = x - X, y - Y
     xR, yR = X + xSub * np.cos(rad) - ySub * np.sin(rad), Y + xSub * np.sin(rad) + ySub * np.cos(rad)
     bridgeRot = np.vstack((xR, yR, z)).T
@@ -449,80 +467,97 @@ def rotate(bridge: np.ndarray, angle: float, plot = False):
         plt.scatter(xR, yR, c = z, marker = m)
         plt.show()
 
-    return bridgeRot
+    return bridgeRot, X, Y
 
-def findEdges(bridge: np.ndarray, threshold = .7, angle = 90, iterations = 10, plot = True):
-    vertices = extremes(bridge, plot = False)
-    _, area = containment(bridge, vertices, plot = False)
+def findEdges(bridge: np.ndarray, idx: int = None, bNum = None, total = None, threshold = .7, angle = 90, iterations = 10, plot = False):
+    vertices = extremes(bridge)
+    _, area, entrance = containment(bridge, vertices, plot = False)
+    
     
     if area < threshold:
-        angle = np.random.uniform(0, angle, size = iterations)
+        angle = np.linspace(start = angle / iterations, stop = angle, num = iterations)
         areas = np.zeros(iterations)
         corners = np.zeros((iterations, 4), dtype = int)
+        entrances = np.zeros((iterations, 2, 2, 3))
+
         for i in range(iterations):
-            bridgeRot = rotate(bridge, angle[i], plot = False)
+            bridgeRot, X, Y = rotate(bridge, angle[i], plot = False)
             corners[i] = extremes(bridgeRot, plot = False)
-            # print(corners[i])
-            _, areas[i] = containment(bridgeRot, corners[i], plot = False)
+            _, areas[i], entrances[i] = containment(bridgeRot, corners[i], plot = False, idx = idx, bNum = bNum, total = total)
 
         best = np.argmax(areas)
 
+        bridge, X, Y = rotate(bridge, angle[best], plot = False)
+        
         vertices = corners[best]
-        bridge = rotate(bridge, angle[best], plot = False)
+        # entrance = entrances[best]
+        entrance = [rotate(entrances[best][i], -angle[best], center = (X, Y))[0] for i in range(2)]
+        
         # print(area, areas)
         area = max(areas[best], area)
     
     if area < threshold:
-        print('ERROR: area is still less than threshold!')
+        # containment(bridge, vertices, d = 2, plot = True)
+        print(f'WARNING (Dataset {idx + 1}): area is still less than threshold!')
     # print(area)
 
     if plot:
-        containment(bridge, vertices, plot = True)
+        containment(bridge, vertices, plot = True, idx = idx, bNum = bNum, total = total)
 
-    return vertices
+    return vertices, entrance
 
-# rotate line and plot perpendicular bit vs rotation angle.  Pick angle that's closes to 90
-# gonna get two 'peaks', pick the angle that corresponds to the 'correct' dimension of the bridge (long vs short)
+def distance(P1, P2, Q):
+    '''
+    Distance from point to line (2D)
+    '''
+    
+    p1, p2, q = P1[:2], P2[:2], Q[:2]
 
-# isBridge: not only test variance, but look at first N points and go to nearest neighbors and take the average difference in z values (or maybe average z variance of a certain neighbor group with certain radius) and compare to some threshold value to see if it's a bridge or not.  A bridge has smoothly varying z values!!
-# ^ might not work, maybe there's just low density but the z varies smoothly (but no clear edges).  Then maybe we should utilize a density threshold?
-# ^ density might not work either beecause there are some bridges with low number of points (but definitely bridges) maybe flag certain clusters that do not meet density (or some other metric) requirement and do something else to those ones?
+    return abs(np.linalg.norm(np.cross(p2 - p1, p1 - q)) / np.linalg.norm(p2 - p1))
+
+def Z(bridge: np.ndarray, edges: np.ndarray, prop = .05, idx = None, bNum = None, total = None, plot = False):
+    e1, e2 = edges
+
+    eP1 = np.argsort([distance(*e1, p) for p in bridge])
+    eP2 = np.argsort([distance(*e2, p) for p in bridge])
+
+    n = round(prop * len(bridge))
+
+    mask = np.concatenate((eP1[:n], eP2[:n]))
 
 
+    if plot:
+        x, y, z = xyz(bridge)
+        m = '.'
+
+        plotMask = [i not in mask for i in range(len(bridge))]
+
+        plt.scatter(x, y, c = z, marker = m)
+        plt.scatter(x[mask], y[mask], c = 'r', marker = m)
+        plt.title(f'Dataset {idx + 1} \n Bridge {bNum + 1}/{total}')
+        plt.show()
+    
+        fig, ax = plt.subplots(subplot_kw = {"projection": "3d"})
+        ax.scatter(x[plotMask], y[plotMask], z[plotMask], marker = '.')
+        ax.scatter(x[mask], y[mask], z[mask], c = 'r', marker = m)
+        plt.title(f'Dataset {idx + 1} \n Bridge {bNum + 1}/{total}')
+        plt.show()
+
+    
 
 if __name__ == '__main__':
     
-    # idx = 15
-    # problematic 15
+    # need to slice 15 into pieces?  Or just consider close to extremals somehow?
 
-    # for idx in range(19):
-    #     X = scale(loadData(idx))
-    #     DB(X, .5)
-    #     Optcs(X, .5)
+    # idx = 11
+    # problematic 15
     
     for idx in range(19):
         X = scale(loadData(idx))
-        labels = DB(X, .5, plot = True)
+        labels = DB(X, .5, plot = False)
         bridges = separate(X, labels)
+        tot = len(bridges)
         
-        for bridge in bridges:
-            findEdges(bridge)
-        
-        # pass
-        # corners = extremes(bridge)
-        # containment(bridge, corners)
-        # rotate(bridge, 45., True)
-        # _, score = regression(bridge)
-        # edge(bridge)
-        # alpha_shape(bridge[:, :2])
-        # print(score)
-    # print(coef)
-    # Optcs(X, .05)
-    # scale(X, True)
-    # k = selectGM(X, 5, 'bic')
-    # k = selectDBCV(X, 5, 100, True)
-    # labels = GM(X, k, True)
-
-    # B = separate(X, plot = False)
-    # # isBridge(B)
-    # bridgePoints(B, plot = True)
+        for i,bridge in enumerate(bridges):
+            _, edges = findEdges(bridge, idx = idx, bNum = i, total = tot, plot = False)
+            Z(bridge, edges, idx = idx, bNum = i, total = tot, plot = True)
