@@ -23,6 +23,7 @@ def xyz(X: np.ndarray):
 def show(X: np.ndarray, labels = None):
     fig, ax = plt.subplots(subplot_kw = {"projection": "3d"})
     ax.scatter(*xyz(X), c = labels, marker = '.')
+    # plt.axis('off')
     plt.show()
 
 def scale(X: np.ndarray, plot = False):
@@ -265,7 +266,9 @@ def selectK(X, kmax = 5, threshold = .8):
 
 def separate(X: np.ndarray, labels: np.ndarray, plot = False, threshold = 2e2):
     k = len(np.unique(labels[labels != -1]))
-    Xsep = [X[labels == i] for i in range(k) if len(np.unique(X[labels == i])) > threshold]
+    Xsep = [X[labels == i] for i in range(k) if len(X[labels == i]) > threshold]
+    # Xsep = [X[labels == i] for i in range(k) if len(np.unique(X[labels == i])) > threshold]
+    # print([len(d) for d in Xsep])
     # print([len(np.unique(d)) for d in Xsep])
 
     if plot:
@@ -517,6 +520,7 @@ def distance(P1, P2, Q):
 
 def Z(bridge: np.ndarray, edges: np.ndarray, prop = .05, idx = None, bNum = None, total = None, plot = False):
     e1, e2 = edges
+    x, y, z = xyz(bridge)
 
     eP1 = np.argsort([distance(*e1, p) for p in bridge])
     eP2 = np.argsort([distance(*e2, p) for p in bridge])
@@ -525,17 +529,17 @@ def Z(bridge: np.ndarray, edges: np.ndarray, prop = .05, idx = None, bNum = None
 
     mask = np.concatenate((eP1[:n], eP2[:n]))
 
+    lowest = np.mean(np.sort(z)[:max(round(1e-2 * len(bridge)), 1)])
 
     if plot:
-        x, y, z = xyz(bridge)
         m = '.'
 
         plotMask = [i not in mask for i in range(len(bridge))]
 
-        plt.scatter(x, y, c = z, marker = m)
-        plt.scatter(x[mask], y[mask], c = 'r', marker = m)
-        plt.title(f'Dataset {idx + 1} \n Bridge {bNum + 1}/{total}')
-        plt.show()
+        # plt.scatter(x, y, c = z, marker = m)
+        # plt.scatter(x[mask], y[mask], c = 'r', marker = m)
+        # plt.title(f'Dataset {idx + 1} \n Bridge {bNum + 1}/{total}')
+        # plt.show()
     
         fig, ax = plt.subplots(subplot_kw = {"projection": "3d"})
         ax.scatter(x[plotMask], y[plotMask], z[plotMask], marker = '.')
@@ -543,21 +547,30 @@ def Z(bridge: np.ndarray, edges: np.ndarray, prop = .05, idx = None, bNum = None
         plt.title(f'Dataset {idx + 1} \n Bridge {bNum + 1}/{total}')
         plt.show()
 
-    
+    # print(np.sort(z)[:max(round(1e-2 * len(bridge)), 1)])
+
+    # NEED TO TRANSFORM BACK INTO OG COORDS
+
+    return lowest
+
+
 
 if __name__ == '__main__':
     
-    # need to slice 15 into pieces?  Or just consider close to extremals somehow?
+    # need to slice 15 into pieces?  Or just consider close to extremals somehow?``
 
-    # idx = 11
+    idx = 16
     # problematic 15
     
-    for idx in range(19):
-        X = scale(loadData(idx))
-        labels = DB(X, .5, plot = False)
-        bridges = separate(X, labels)
-        tot = len(bridges)
-        
-        for i,bridge in enumerate(bridges):
-            _, edges = findEdges(bridge, idx = idx, bNum = i, total = tot, plot = False)
-            Z(bridge, edges, idx = idx, bNum = i, total = tot, plot = True)
+    # for idx in range(19):
+    X = scale(loadData(idx))
+    # show(X)
+    labels = DB(X, .5, plot = False)
+    bridges = separate(X, labels)
+    tot = len(bridges)
+    # print(f'Dataset {idx + 1} has {tot} bridges.')
+    
+    for i,bridge in enumerate(bridges):
+        # print(f'{idx+1} \t {len(bridge)}')
+        _, edges = findEdges(bridge, idx = idx, bNum = i, total = tot, plot = False)
+        Z(bridge, edges, idx = idx, bNum = i, total = tot, plot = True)
